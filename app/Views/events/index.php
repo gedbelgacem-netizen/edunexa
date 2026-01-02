@@ -18,6 +18,7 @@ $view_type = isset($view_type) ? $view_type : "";
 
 $context = isset($context) ? $context : (isset($_GET['context']) ? $_GET['context'] : "");
 $is_program_context = isset($is_program_context) ? (bool)$is_program_context : ($context === "program");
+$is_read_only = isset($is_read_only) ? (bool)$is_read_only : false;
 $learner_id = isset($learner_id) ? $learner_id : "";
 ?>
 <div id="page-content<?php echo $client; ?>" class="page-wrapper<?php echo $client; ?> clearfix">
@@ -26,7 +27,7 @@ $learner_id = isset($learner_id) ? $learner_id : "";
             <div class="card-header">
                 <span class="fw-bold mt-1 d-inline-block"><i data-feather="calendar" class="icon-16"></i> &nbsp;<?php echo app_lang("events"); ?></span>
                 <div class="float-end">
-                    <?php if (!$is_program_context) { ?>
+                    <?php if (!$is_read_only) { ?>
                     <?php echo modal_anchor(get_uri("events/modal_form"), "<i data-feather='plus' class='icon-16'></i> " . app_lang('add_event'), array("class" => "mr5", "title" => app_lang('add_event'), "data-post-client_id" => $client)); ?>
                     <?php } ?>
 
@@ -34,8 +35,11 @@ $learner_id = isset($learner_id) ? $learner_id : "";
                         <?php echo view("clients/layout_settings_dropdown", array("view_type" => $view_type, "context" => "client_details_events")); ?>
                     <?php } ?>
                 </div>
+                <?php if ($is_read_only) { ?>
+                    <div class="mt10 text-off"><i data-feather="lock" class="icon-16"></i> Read-only (sessions only)</div>
+                <?php } ?>
             </div>
-            <?php if (!$is_program_context && $calendar_filter_dropdown) { ?>
+            <?php if (!$is_read_only && $calendar_filter_dropdown) { ?>
                 <div id="calendar-filter-dropdown" class="float-start hide"></div>
             <?php } ?>
         <?php } else { ?>
@@ -48,7 +52,7 @@ $learner_id = isset($learner_id) ? $learner_id : "";
                     }
                     ?>
 
-                    <?php if (!$is_program_context) { ?>
+                    <?php if (!$is_program_context && !$is_read_only) { ?>
 
                     <?php
                     echo form_input(array(
@@ -72,7 +76,8 @@ $learner_id = isset($learner_id) ? $learner_id : "";
 
                     <?php echo modal_anchor(get_uri("events/modal_form"), "<i data-feather='plus-circle' class='icon-16'></i> " . app_lang('add_event'), array("class" => "btn btn-default add-btn", "title" => app_lang('add_event'), "data-post-client_id" => $client)); ?>
 
-                    <?php } else { ?>
+                    <?php } ?>
+                    <?php if ($is_read_only) { ?>
                         <div class="mt15 text-off"><i data-feather="lock" class="icon-16"></i> Read-only (sessions only)</div>
                     <?php } ?>
                 </div>
@@ -80,8 +85,8 @@ $learner_id = isset($learner_id) ? $learner_id : "";
         <?php } ?>
 
         <?php echo modal_anchor(get_uri("events/modal_form"), "", array("class" => "hide", "id" => "add_event_hidden", "title" => app_lang('add_event'), "data-post-client_id" => $client)); ?>
-        <?php echo modal_anchor(get_uri("events/view"), "", array("class" => "hide", "id" => "show_event_hidden", "data-post-client_id" => $client, "data-post-cycle" => "0", "data-post-editable" => "1", "title" => app_lang('event_details'))); ?>
-        <?php if ($is_program_context) { ?>
+        <?php echo modal_anchor(get_uri("events/view"), "", array("class" => "hide", "id" => "show_event_hidden", "data-post-client_id" => $client, "data-post-cycle" => "0", "data-post-editable" => $is_read_only ? "0" : "1", "title" => app_lang('event_details'))); ?>
+        <?php if ($is_read_only) { ?>
             <?php echo modal_anchor(get_uri("events/view"), "", array("class" => "hide", "id" => "show_program_session_hidden", "data-modal-lg" => "1", "title" => "Session details")); ?>
         <?php } ?>
 
@@ -99,8 +104,8 @@ $learner_id = isset($learner_id) ? $learner_id : "";
         eventLabel = "";
 
     var isProgramContext = <?php echo $is_program_context ? 'true' : 'false'; ?>;
+    var isReadOnly = <?php echo $is_read_only ? 'true' : 'false'; ?>;
     var learnerId = "<?php echo esc($learner_id); ?>";
-
 
     var loadCalendar = function() {
         var filter_values = filterValues || "events",
@@ -118,7 +123,7 @@ $learner_id = isset($learner_id) ? $learner_id : "";
                 right: 'dayGridMonth,timeGridWeek,timeGridDay,listMonth'
             },
             events: (function(){
-                if (isProgramContext) {
+                if (isReadOnly) {
                     return {
                         url: "<?php echo_uri('events/calendar_events'); ?>",
                         method: 'GET',
@@ -132,9 +137,12 @@ $learner_id = isset($learner_id) ? $learner_id : "";
                 return "<?php echo_uri('events/calendar_events/'); ?>" + filter_values + "/" + event_label + "/" + "<?php echo "/$client"; ?>";
             })(),
             dayMaxEvents: false,
+            editable: !isReadOnly,
+            eventStartEditable: !isReadOnly,
+            eventDurationEditable: !isReadOnly,
+            selectable: !isReadOnly,
             dateClick: function(date, jsEvent, view) {
-                if (isProgramContext) {
-                    appAlert.warning("Read-only (sessions only)", {duration: 5000});
+                if (isReadOnly) {
                     return false;
                 }
 
@@ -156,7 +164,7 @@ $learner_id = isset($learner_id) ? $learner_id : "";
                 $("#add_event_hidden").trigger("click");
             },
             eventClick: function(calEvent) {
-                if (isProgramContext) {
+                if (isReadOnly) {
                     var sessionId = calEvent.event.id || calEvent.event.extendedProps.session_id || calEvent.event.extendedProps.id;
                     if (!sessionId) {
                         // Nothing to open
@@ -220,7 +228,7 @@ $learner_id = isset($learner_id) ? $learner_id : "";
     };
 
     $(document).ready(function() {
-        if (isProgramContext) {
+        if (isReadOnly) {
             loadCalendar();
             return;
         }
