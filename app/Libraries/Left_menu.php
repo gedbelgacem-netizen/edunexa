@@ -634,6 +634,44 @@ class Left_menu {
     private function _get_edunexa_coordinator_menu_items() {
         $contact_id = $this->ci->login_user->id;
 
+        if ($this->ci->login_user->user_type === "staff") {
+            $sidebar_menu = array(
+                array(
+                    "name" => "dashboard",
+                    "language_key" => "dashboard",
+                    "url" => get_uri("dashboard"),
+                    "class" => "monitor",
+                    "is_custom_menu_item" => true
+                ),
+                array(
+                    "name" => "events",
+                    "language_key" => "events",
+                    "url" => get_uri("events"),
+                    "class" => "calendar",
+                    "is_custom_menu_item" => true
+                ),
+                array(
+                    "name" => "clients",
+                    "language_key" => "clients",
+                    "url" => get_uri("clients"),
+                    "class" => "briefcase",
+                    "is_custom_menu_item" => true
+                )
+            );
+
+            if ($this->ci->login_user->is_admin) {
+                $sidebar_menu[] = array(
+                    "name" => "settings",
+                    "language_key" => "settings",
+                    "url" => get_uri("settings"),
+                    "class" => "settings",
+                    "is_custom_menu_item" => true
+                );
+            }
+
+            return $sidebar_menu;
+        }
+
         // Staff and client have different profile pages in Rise.
         // Keep the label stable ("Settings/Profile") while allowing different URLs.
         $settings_profile_url = ($this->ci->login_user->user_type === "client")
