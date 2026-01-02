@@ -20,6 +20,8 @@ $context = isset($context) ? $context : (isset($_GET['context']) ? $_GET['contex
 $is_program_context = isset($is_program_context) ? (bool)$is_program_context : ($context === "program");
 $is_read_only = isset($is_read_only) ? (bool)$is_read_only : false;
 $learner_id = isset($learner_id) ? $learner_id : "";
+$show_event_controls = !$is_read_only && !$is_program_context;
+$show_mobile_event_controls = !$is_read_only;
 ?>
 <div id="page-content<?php echo $client; ?>" class="page-wrapper<?php echo $client; ?> clearfix">
     <div class="card full-width-button">
@@ -27,7 +29,7 @@ $learner_id = isset($learner_id) ? $learner_id : "";
             <div class="card-header">
                 <span class="fw-bold mt-1 d-inline-block"><i data-feather="calendar" class="icon-16"></i> &nbsp;<?php echo app_lang("events"); ?></span>
                 <div class="float-end">
-                    <?php if (!$is_read_only) { ?>
+                    <?php if ($show_mobile_event_controls) { ?>
                     <?php echo modal_anchor(get_uri("events/modal_form"), "<i data-feather='plus' class='icon-16'></i> " . app_lang('add_event'), array("class" => "mr5", "title" => app_lang('add_event'), "data-post-client_id" => $client)); ?>
                     <?php } ?>
 
@@ -39,7 +41,7 @@ $learner_id = isset($learner_id) ? $learner_id : "";
                     <div class="mt10 text-off"><i data-feather="lock" class="icon-16"></i> Read-only (sessions only)</div>
                 <?php } ?>
             </div>
-            <?php if (!$is_read_only && $calendar_filter_dropdown) { ?>
+            <?php if ($show_mobile_event_controls && $calendar_filter_dropdown) { ?>
                 <div id="calendar-filter-dropdown" class="float-start hide"></div>
             <?php } ?>
         <?php } else { ?>
@@ -52,7 +54,7 @@ $learner_id = isset($learner_id) ? $learner_id : "";
                     }
                     ?>
 
-                    <?php if (!$is_program_context && !$is_read_only) { ?>
+                    <?php if ($show_event_controls) { ?>
 
                     <?php
                     echo form_input(array(
@@ -84,14 +86,11 @@ $learner_id = isset($learner_id) ? $learner_id : "";
             </div>
         <?php } ?>
 
-        <?php echo modal_anchor(get_uri("events/modal_form"), "", array("class" => "hide", "id" => "add_event_hidden", "title" => app_lang('add_event'), "data-post-client_id" => $client)); ?>
-        <?php echo modal_anchor(get_uri("events/view"), "", array("class" => "hide", "id" => "show_event_hidden", "data-post-client_id" => $client, "data-post-cycle" => "0", "data-post-editable" => $is_read_only ? "0" : "1", "title" => app_lang('event_details'))); ?>
-        <?php if ($is_read_only) { ?>
-            <?php echo modal_anchor(get_uri("events/view"), "", array("class" => "hide", "id" => "show_program_session_hidden", "data-modal-lg" => "1", "title" => "Session details")); ?>
-        <?php } ?>
+<?php echo modal_anchor(get_uri("events/modal_form"), "", array("class" => "hide", "id" => "add_event_hidden", "title" => app_lang('add_event'), "data-post-client_id" => $client)); ?>
+<?php echo modal_anchor(get_uri("events/view"), "", array("class" => "hide", "id" => "show_event_hidden", "data-post-client_id" => $client, "data-post-cycle" => "0", "data-post-editable" => $is_read_only ? "0" : "1", "title" => app_lang('event_details'))); ?>
 
-        <?php echo modal_anchor(get_uri("leaves/application_details"), "", array("class" => "hide", "data-post-id" => "", "id" => "show_leave_hidden")); ?>
-        <?php echo modal_anchor(get_uri("tasks/view"), "", array("class" => "hide", "data-post-id" => "", "id" => "show_task_hidden", "data-modal-lg" => "1")); ?>
+<?php echo modal_anchor(get_uri("leaves/application_details"), "", array("class" => "hide", "data-post-id" => "", "id" => "show_leave_hidden")); ?>
+<?php echo modal_anchor(get_uri("tasks/view"), "", array("class" => "hide", "data-post-id" => "", "id" => "show_task_hidden", "data-modal-lg" => "1")); ?>
 
         <div class="card-body <?php echo $is_mobile ? "calender-mobile-view" : ""; ?>">
             <div id="event-calendar"></div>
@@ -106,6 +105,64 @@ $learner_id = isset($learner_id) ? $learner_id : "";
     var isProgramContext = <?php echo $is_program_context ? 'true' : 'false'; ?>;
     var isReadOnly = <?php echo $is_read_only ? 'true' : 'false'; ?>;
     var learnerId = "<?php echo esc($learner_id); ?>";
+
+    var openCalendarItem = function(options) {
+        if (!options) {
+            return;
+        }
+
+        if (options.type === "leave") {
+            if (!options.leaveId) {
+                return;
+            }
+
+            $("#show_leave_hidden").attr("data-post-id", options.leaveId);
+            $("#show_leave_hidden").trigger("click");
+            return;
+        }
+
+        if (options.type === "task") {
+            if (!options.taskId) {
+                return;
+            }
+
+            $("#show_task_hidden").attr("data-post-id", options.taskId);
+            $("#show_task_hidden").trigger("click");
+            return;
+        }
+
+        if (options.type === "project" && options.url) {
+            window.location = options.url;
+            return;
+        }
+
+        var $eventModal = $("#show_event_hidden");
+        $eventModal.removeAttr("data-action-url");
+
+        if (options.actionUrl) {
+            $eventModal.attr("data-action-url", options.actionUrl);
+            $eventModal.attr("data-post-editable", "0");
+            if (options.modalLg) {
+                $eventModal.attr("data-modal-lg", "1");
+            } else {
+                $eventModal.removeAttr("data-modal-lg");
+            }
+            $eventModal.removeAttr("data-post-id");
+            $eventModal.attr("data-post-cycle", "0");
+            $eventModal.trigger("click");
+            return;
+        }
+
+        if (!options.encryptedEventId) {
+            return;
+        }
+
+        $eventModal.removeAttr("data-modal-lg");
+        $eventModal.attr("data-post-id", options.encryptedEventId);
+        $eventModal.attr("data-post-cycle", options.cycle || "0");
+        $eventModal.attr("data-post-editable", options.editable ? "1" : "0");
+        $eventModal.trigger("click");
+    };
 
     var loadCalendar = function() {
         var filter_values = filterValues || "events",
@@ -164,8 +221,10 @@ $learner_id = isset($learner_id) ? $learner_id : "";
                 $("#add_event_hidden").trigger("click");
             },
             eventClick: function(calEvent) {
+                var eventData = calEvent.event.extendedProps || {};
+
                 if (isReadOnly) {
-                    var sessionId = calEvent.event.id || calEvent.event.extendedProps.session_id || calEvent.event.extendedProps.id;
+                    var sessionId = calEvent.event.id || eventData.session_id || eventData.id;
                     if (!sessionId) {
                         // Nothing to open
                         return false;
@@ -176,27 +235,37 @@ $learner_id = isset($learner_id) ? $learner_id : "";
                         url += "&learner_id=" + encodeURIComponent(learnerId);
                     }
 
-                    $("#show_program_session_hidden").attr("data-action-url", url);
-                    $("#show_program_session_hidden").trigger("click");
+                    openCalendarItem({
+                        actionUrl: url,
+                        modalLg: true
+                    });
                     return false;
                 }
 
-                calEvent = calEvent.event.extendedProps;
-                if (calEvent.event_type === "event") {
-                    $("#show_event_hidden").attr("data-post-id", calEvent.encrypted_event_id);
-                    $("#show_event_hidden").attr("data-post-cycle", calEvent.cycle);
-                    $("#show_event_hidden").trigger("click");
+                if (eventData.event_type === "event") {
+                    openCalendarItem({
+                        encryptedEventId: eventData.encrypted_event_id,
+                        cycle: eventData.cycle,
+                        editable: !isReadOnly
+                    });
 
-                } else if (calEvent.event_type === "leave") {
-                    $("#show_leave_hidden").attr("data-post-id", calEvent.leave_id);
-                    $("#show_leave_hidden").trigger("click");
+                } else if (eventData.event_type === "leave") {
+                    openCalendarItem({
+                        type: "leave",
+                        leaveId: eventData.leave_id
+                    });
 
-                } else if (calEvent.event_type === "project_deadline" || calEvent.event_type === "project_start_date") {
-                    window.location = "<?php echo site_url('projects/view'); ?>/" + calEvent.project_id;
-                } else if (calEvent.event_type === "task_deadline" || calEvent.event_type === "task_start_date") {
+                } else if (eventData.event_type === "project_deadline" || eventData.event_type === "project_start_date") {
+                    openCalendarItem({
+                        type: "project",
+                        url: "<?php echo site_url('projects/view'); ?>/" + eventData.project_id
+                    });
+                } else if (eventData.event_type === "task_deadline" || eventData.event_type === "task_start_date") {
 
-                    $("#show_task_hidden").attr("data-post-id", calEvent.task_id);
-                    $("#show_task_hidden").trigger("click");
+                    openCalendarItem({
+                        type: "task",
+                        taskId: eventData.task_id
+                    });
                 }
             },
             eventContent: function(element) {
@@ -257,8 +326,11 @@ $learner_id = isset($learner_id) ? $learner_id : "";
         //autoload the event popover
         var encrypted_event_id = "<?php echo isset($encrypted_event_id) ? $encrypted_event_id : ''; ?>";
         if (encrypted_event_id) {
-            $("#show_event_hidden").attr("data-post-id", encrypted_event_id);
-            $("#show_event_hidden").trigger("click");
+            openCalendarItem({
+                encryptedEventId: encrypted_event_id,
+                cycle: "0",
+                editable: !isReadOnly
+            });
         }
 
         $("#event-labels-dropdown").select2({
