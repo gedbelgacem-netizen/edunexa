@@ -37,6 +37,7 @@ class Events extends Security_Controller {
         // EDUNEXA PHASE 0 context flags (used by Program Calendar + Learner calendar tabs)
         $view_data['context'] = $context;
         $view_data['is_program_context'] = $is_program_context;
+        $view_data['is_read_only'] = ($this->login_user->user_type === "staff") || $is_program_context;
         $view_data['learner_id'] = $this->request->getGet("learner_id");
 
         return $this->template->rander("events/index", $view_data);
