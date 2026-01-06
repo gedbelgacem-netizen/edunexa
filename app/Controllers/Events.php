@@ -748,6 +748,9 @@ class Events extends Security_Controller {
         // --------------------------------------------------------------------
         if ($context === "program") {
 
+            $session_id = $id ? $id : $this->request->getPost("id");
+            validate_numeric_value($session_id);
+
             // --- EDUNEXA PHASE 1 FIX START ---
             $sessions_model = model("App\Models\EdxSessionsModel");
 
