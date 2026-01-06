@@ -416,34 +416,33 @@ class Events extends Security_Controller {
 
             // --- EDUNEXA PHASE 1 FIX START ---
             date_default_timezone_set("Africa/Tunis");
-            $tz = new \DateTimeZone("Africa/Tunis");
 
             $start = $this->request->getGet("start");
             $end = $this->request->getGet("end");
             $learner_id = $this->request->getGet("learner_id");
 
-            $start_value = "";
-            $end_value = "";
-
-            if ($start) {
-                try {
-                    $start_dt = new \DateTime($start);
-                    $start_dt->setTimezone($tz);
-                    $start_value = $start_dt->format("Y-m-d H:i:s");
-                } catch (\Exception $e) {
-                    $start_value = "";
+            $normalize_calendar_input = function ($value) {
+                if (!$value) {
+                    return "";
                 }
-            }
 
-            if ($end) {
-                try {
-                    $end_dt = new \DateTime($end);
-                    $end_dt->setTimezone($tz);
-                    $end_value = $end_dt->format("Y-m-d H:i:s");
-                } catch (\Exception $e) {
-                    $end_value = "";
+                $value = str_replace("T", " ", $value);
+                $value = preg_replace('/\.\d+/', '', $value);
+                $value = preg_replace('/Z$/', '', $value);
+                $value = preg_replace('/[\+\-]\d{2}(:?\d{2})?(:?\d{2})?$/', '', $value);
+                $value = trim($value);
+
+                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+                    $value .= " 00:00:00";
+                } else if (preg_match('/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}$/', $value)) {
+                    $value .= ":00";
                 }
-            }
+
+                return $value;
+            };
+
+            $start_value = $normalize_calendar_input($start);
+            $end_value = $normalize_calendar_input($end);
 
             $options = array();
 
