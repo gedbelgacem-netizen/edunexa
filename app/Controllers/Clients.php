@@ -44,6 +44,23 @@ class Clients extends Security_Controller {
                 "tab" => clean_data($tab)
             );
 
+            // --- EDUNEXA PHASE 1 FIX START ---
+            $learners_model = model("App\Models\EdxLearnersModel");
+            $courses_model = model("App\Models\EdxCoursesModel");
+
+            $search = $this->request->getGet("search");
+            if ($search === null) {
+                $search = $this->request->getPost("search");
+            }
+
+            $view_data["learners"] = $learners_model->get_details(array(
+                "created_by" => $this->login_user->id,
+                "search" => $search
+            ))->getResult();
+
+            $view_data["courses_dropdown"] = $courses_model->get_dropdown_list();
+            // --- EDUNEXA PHASE 1 FIX END ---
+
             return $this->template->rander("clients/coordinator/index", $view_data);
         }
         $this->access_only_allowed_members();
@@ -2432,6 +2449,131 @@ class Clients extends Security_Controller {
             "event_card_layout" => isset($layout_settings['client_details_events']) ? $layout_settings['client_details_events'] : '',
             "ticket_card_layout" => isset($layout_settings['client_details_tickets']) ? $layout_settings['client_details_tickets'] : ''
         ];
+    }
+
+
+    // --------------------------------------------------------------------
+    // EDUNEXA PHASE 1: Coordinator learner create + intake request
+    // Endpoints:
+    // - /clients/learner_modal_form
+    // - /clients/save_learner
+    // --------------------------------------------------------------------
+    function learner_modal_form() {
+        // --- EDUNEXA PHASE 1 FIX START ---
+        if ($this->login_user->user_type !== "client") {
+            show_404();
+        }
+
+        $courses_model = model("App\Models\EdxCoursesModel");
+
+        $view_data = array();
+        $view_data["courses_dropdown"] = $courses_model->get_dropdown_list();
+
+        return $this->template->view("clients/coordinator/learner_modal_form", $view_data);
+        // --- EDUNEXA PHASE 1 FIX END ---
+    }
+
+    function save_learner() {
+        // --- EDUNEXA PHASE 1 FIX START ---
+        if ($this->login_user->user_type !== "client") {
+            show_404();
+        }
+
+        $this->validate_submitted_data(array(
+            "first_name" => "required",
+            "last_name" => "required",
+            "course_id" => "required|numeric"
+        ));
+
+        date_default_timezone_set("Africa/Tunis");
+        $now = date("Y-m-d H:i:s");
+
+        $learners_model = model("App\Models\EdxLearnersModel");
+        $db = db_connect("default");
+
+        $course_id = $this->request->getPost("course_id");
+        $courses_table = $db->prefixTable("edx_courses");
+        $course = $db->table($courses_table)->select("id")->where("id", $course_id)->where("deleted", 0)->get()->getRow();
+        if (!$course) {
+            echo json_encode(array("success" => false, "message" => "Invalid course."));
+            return;
+        }
+
+        $learner_data = array(
+            "first_name" => $this->request->getPost("first_name"),
+            "last_name" => $this->request->getPost("last_name"),
+            "email" => $this->request->getPost("email"),
+            "phone" => $this->request->getPost("phone"),
+            "course_id" => $course_id,
+            "status" => "new",
+            "created_by" => $this->login_user->id,
+            "created_at" => $now
+        );
+
+        $db->transBegin();
+
+        $learners_table = $db->prefixTable("edx_learners");
+        $learners_builder = $db->table($learners_table);
+
+        $attempts = 0;
+        $learner_id = 0;
+
+        while ($attempts < 2) {
+            $attempts++;
+
+            $next_ref = $learners_model->get_next_learner_ref();
+            if (!$next_ref) {
+                $db->transRollback();
+                echo json_encode(array("success" => false, "message" => "Learner reference limit reached (999)."));
+                return;
+            }
+
+            $learner_data["learner_ref"] = $next_ref;
+
+            $inserted = $learners_builder->insert($learner_data);
+            if ($inserted) {
+                $learner_id = $db->insertID();
+                break;
+            }
+
+            $err = $db->error();
+            if (intval(get_array_value($err, "code")) === 1062 && $attempts < 2) {
+                continue; // retry once on unique learner_ref constraint
+            }
+
+            $db->transRollback();
+            echo json_encode(array("success" => false, "message" => "Could not create learner."));
+            return;
+        }
+
+        if (!$learner_id) {
+            $db->transRollback();
+            echo json_encode(array("success" => false, "message" => "Could not create learner."));
+            return;
+        }
+
+        $intake_table = $db->prefixTable("edx_intake_requests");
+        $intake_data = array(
+            "learner_id" => $learner_id,
+            "status" => "pending",
+            "created_by" => $this->login_user->id,
+            "created_at" => $now
+        );
+
+        if (!$db->table($intake_table)->insert($intake_data)) {
+            $db->transRollback();
+            echo json_encode(array("success" => false, "message" => "Could not create intake request."));
+            return;
+        }
+
+        $db->transCommit();
+
+        echo json_encode(array(
+            "success" => true,
+            "id" => $learner_id,
+            "message" => "Learner and intake request created."
+        ));
+        // --- EDUNEXA PHASE 1 FIX END ---
     }
 }
 

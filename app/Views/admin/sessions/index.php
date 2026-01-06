@@ -1,50 +1,45 @@
 <div id="page-content" class="page-wrapper clearfix">
     <div class="page-title clearfix">
         <h1><i data-feather="calendar" class="icon-16"></i> &nbsp;Sessions</h1>
-        <div class="title-button-group">
-            <?php
-            // Phase 0 stub: open a sample session modal
-            echo modal_anchor(get_uri("admin/view_session/1"), "<i data-feather='eye' class='icon-16'></i> View sample session", array(
-                "class" => "btn btn-default",
-                "title" => "Session details",
-                "data-modal-lg" => "1"
-            ));
-            ?>
-        </div>
+
+        <?php if ($login_user->is_admin) { ?>
+            <div class="title-button-group">
+                <?php
+                echo modal_anchor(get_uri("admin/session_modal_form"), "<i data-feather='plus-circle' class='icon-16'></i> Add session", array(
+                    "class" => "btn btn-default",
+                    "title" => "Add session",
+                    "data-modal-lg" => "1"
+                ));
+                ?>
+            </div>
+        <?php } ?>
     </div>
 
     <div class="card">
-        <div class="card-body">
-            <div class="alert alert-info mb15">
-                <strong>Phase 0:</strong> Sessions UI skeleton. Data wiring will arrive in later phases.
-            </div>
-
-            <div class="table-responsive">
-                <table class="table table-bordered">
-                    <thead>
-                        <tr>
-                            <th style="width: 120px;">Session ID</th>
-                            <th>Title</th>
-                            <th style="width: 160px;">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td>1</td>
-                            <td>Sample session (stub)</td>
-                            <td>
-                                <?php
-                                echo modal_anchor(get_uri("admin/view_session/1"), "<i data-feather='eye' class='icon-16'></i> View", array(
-                                    "title" => "Session details",
-                                    "data-modal-lg" => "1",
-                                    "class" => "btn btn-default btn-sm"
-                                ));
-                                ?>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+        <div class="table-responsive">
+            <table id="edx-sessions-table" class="display" cellspacing="0" width="100%"></table>
         </div>
     </div>
 </div>
+
+<script type="text/javascript">
+    $(document).ready(function () {
+        feather.replace();
+
+        $("#edx-sessions-table").appTable({
+            source: '<?php echo_uri("admin/sessions_list_data"); ?>',
+            order: [[0, "desc"]],
+            columns: [
+                {title: "ID", "class": "w10p"},
+                {title: "Learner ref"},
+                {title: "Learner"},
+                {title: "Course"},
+                {title: "Start"},
+                {title: "End"},
+                {title: "Planned (min)"},
+                {title: "Status"},
+                {title: "<i data-feather='menu' class='icon-16'></i>", "class": "text-center option w10p"}
+            ]
+        });
+    });
+</script>

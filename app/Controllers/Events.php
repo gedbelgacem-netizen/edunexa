@@ -413,8 +413,77 @@ class Events extends Security_Controller {
         // Endpoint: /events/calendar_events?context=program
         // --------------------------------------------------------------------
         if ($context === "program") {
-            // Use CI response object to send proper JSON Content-Type.
-            return $this->response->setJSON([]);
+
+            // --- EDUNEXA PHASE 1 FIX START ---
+            date_default_timezone_set("Africa/Tunis");
+
+            $start = $this->request->getGet("start");
+            $end = $this->request->getGet("end");
+            $learner_id = $this->request->getGet("learner_id");
+
+            $normalize_calendar_input = function ($value) {
+                if (!$value) {
+                    return "";
+                }
+
+                $value = str_replace("T", " ", $value);
+                $value = preg_replace('/\.\d+/', '', $value);
+                $value = preg_replace('/Z$/', '', $value);
+                $value = preg_replace('/[\+\-]\d{2}(:?\d{2})?(:?\d{2})?$/', '', $value);
+                $value = trim($value);
+
+                if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+                    $value .= " 00:00:00";
+                } else if (preg_match('/^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}$/', $value)) {
+                    $value .= ":00";
+                }
+
+                return $value;
+            };
+
+            $start_value = $normalize_calendar_input($start);
+            $end_value = $normalize_calendar_input($end);
+
+            $options = array();
+
+            if ($start_value && $end_value) {
+                $options["start"] = $start_value;
+                $options["end"] = $end_value;
+            }
+
+            if ($learner_id) {
+                $options["learner_id"] = $learner_id;
+            }
+
+            // Coordinator isolation: only show sessions for learners created by this coordinator
+            if ($this->login_user->user_type === "client") {
+                $options["created_by"] = $this->login_user->id;
+            }
+
+            $sessions_model = model("App\Models\EdxSessionsModel");
+            $sessions = $sessions_model->get_details($options)->getResult();
+
+            $events = array();
+            foreach ($sessions as $session) {
+                $title = "Session";
+                if (isset($session->learner_ref) && $session->learner_ref) {
+                    $title = $session->learner_ref . " - " . trim($session->first_name . " " . $session->last_name);
+                }
+
+                $events[] = array(
+                    "id" => $session->id,
+                    "title" => $title,
+                    "start" => $session->start,
+                    "end" => $session->end,
+                    "extendedProps" => array(
+                        "learner_id" => $session->learner_id,
+                        "course_id" => $session->course_id
+                    )
+                );
+            }
+
+            return $this->response->setJSON($events);
+            // --- EDUNEXA PHASE 1 FIX END ---
         }
 
         $start = $this->request->getGet("start");
@@ -677,15 +746,34 @@ class Events extends Security_Controller {
         // Endpoint: /events/view/{id}?context=program
         // --------------------------------------------------------------------
         if ($context === "program") {
-            $session_id = $id ? $id : $this->request->getPost('id');
+
+            $session_id = $id ? $id : $this->request->getPost("id");
             validate_numeric_value($session_id);
 
+            // --- EDUNEXA PHASE 1 FIX START ---
+            $sessions_model = model("App\Models\EdxSessionsModel");
+
+            $created_by = 0;
+            if ($this->login_user->user_type === "client") {
+                $created_by = $this->login_user->id;
+            }
+
+            $session_info = $sessions_model->get_one_details($session_id, $created_by)->getRow();
+            if (!$session_info) {
+                show_404();
+            }
+
+            $db = db_connect("default");
+            $logs_table = $db->prefixTable("edx_session_logs");
+            $logs = $db->table($logs_table)->where("session_id", $session_id)->where("deleted", 0)->orderBy("created_at", "DESC")->get()->getResult();
+
             $view_data = array(
-                "id" => $session_id,
-                "learner_id" => $this->request->getGet('learner_id')
+                "session_info" => $session_info,
+                "logs" => $logs
             );
 
-            return $this->template->view('events/program_session_view', $view_data);
+            return $this->template->view("events/program_session_view", $view_data);
+            // --- EDUNEXA PHASE 1 FIX END ---
         }
 
         // Legacy event view flow (preserve Rise behavior)

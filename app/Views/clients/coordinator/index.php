@@ -1,40 +1,76 @@
 <div id="page-content" class="page-wrapper clearfix">
     <div class="page-title clearfix">
         <h1><i data-feather="users" class="icon-16"></i> &nbsp;Learners</h1>
+        <div class="title-button-group">
+            <?php echo modal_anchor(get_uri("clients/learner_modal_form"), "<i data-feather='plus-circle' class='icon-16'></i> Add learner", array("class" => "btn btn-default", "title" => "Add learner")); ?>
+        </div>
     </div>
 
     <div class="card">
         <div class="card-body">
             <ul id="learners-tabs" class="nav nav-tabs" role="tablist">
                 <li><a role="presentation" href="#learners-list" data-bs-toggle="tab" class="active">List</a></li>
-                <li><a role="presentation" href="#learners-kanban-status" data-bs-toggle="tab">Kanban: Status</a></li>
-                <li><a role="presentation" href="#learners-kanban-sessions" data-bs-toggle="tab">Kanban: Sessions</a></li>
-            </ul>
+                <li><a role="presentation" href="#l<div role="tabpanel" class="tab-pane fade show active" id="learners-list">
+                    <?php $search_value = get_array_value($_GET, "search"); ?>
 
-            <div class="tab-content">
-                <div role="tabpanel" class="tab-pane fade show active" id="learners-list">
-                    <div class="alert alert-info mt15">
-                        <strong>Phase 0:</strong> Learners list UI shell. Data wiring is not implemented yet.
+                    <?php if (!isset($courses_dropdown) || !count($courses_dropdown)) { ?>
+                        <div class="alert alert-warning mt15">
+                            No courses found. Please add at least one course in <strong>edx_courses</strong>.
+                        </div>
+                    <?php } ?>
+
+                    <div class="mt15 mb15">
+                        <form action="" method="GET" class="clearfix">
+                            <div class="input-group">
+                                <input type="text" name="search" value="<?php echo esc($search_value); ?>" class="form-control" placeholder="Search by ref or name">
+                                <button class="btn btn-default" type="submit"><i data-feather="search" class="icon-16"></i></button>
+                                <a class="btn btn-default" href="<?php echo get_uri("clients"); ?>"><i data-feather="x" class="icon-16"></i></a>
+                            </div>
+                        </form>
                     </div>
 
                     <div class="table-responsive">
                         <table class="table table-striped">
                             <thead>
                                 <tr>
-                                    <th>Learner ID</th>
-                                    <th>Name</th>
+                                    <th>Ref</th>
+                                    <th>Learner</th>
+                                    <th>Course</th>
                                     <th>Status</th>
+                                    <th>Intake</th>
                                     <th class="text-end">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr>
-                                    <td>#1</td>
-                                    <td>Sample Learner</td>
-                                    <td><span class="badge bg-secondary">new</span></td>
-                                    <td class="text-end">
-                                        <a href="<?php echo get_uri('clients/view/1'); ?>" class="btn btn-default btn-sm"><i data-feather="eye" class="icon-16"></i> View</a>
-                                        <a href="<?php echo get_uri('clients/compact_view/1'); ?>" class="btn btn-default btn-sm"><i data-feather="maximize" class="icon-16"></i> Compact</a>
+                                <?php if (isset($learners) && $learners) { ?>
+                                    <?php foreach ($learners as $learner) { ?>
+                                        <tr>
+                                            <td><?php echo esc($learner->learner_ref); ?></td>
+                                            <td><?php echo esc(trim($learner->first_name . " " . $learner->last_name)); ?></td>
+                                            <td><?php echo esc($learner->course_name); ?></td>
+                                            <td><?php echo esc($learner->status); ?></td>
+                                            <td><?php echo esc($learner->latest_intake_status); ?></td>
+                                            <td class="text-end">
+                                                <a href="<?php echo get_uri("clients/view/" . $learner->id); ?>" class="btn btn-default btn-sm" title="View">
+                                                    <i data-feather="eye" class="icon-16"></i>
+                                                </a>
+                                                <a href="<?php echo get_uri("clients/compact_view/" . $learner->id); ?>" class="btn btn-default btn-sm" title="Compact view">
+                                                    <i data-feather="grid" class="icon-16"></i>
+                                                </a>
+                                            </td>
+                                        </tr>
+                                    <?php } ?>
+                                <?php } else { ?>
+                                    <tr>
+                                        <td colspan="6" class="text-center text-muted">No learners found.</td>
+                                    </tr>
+                                <?php } ?>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+er="maximize" class="icon-16"></i> Compact</a>
                                     </td>
                                 </tr>
                             </tbody>
