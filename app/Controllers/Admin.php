@@ -288,4 +288,209 @@ class Admin extends Security_Controller {
         ));
         // --- EDUNEXA PHASE 1 FIX END ---
     }
+
+
+    // --------------------------------------------------------------------
+    // EDUNEXA PHASE 1: Sessions scheduling (Admin)
+    // Endpoints:
+    // - /admin/sessions_list_data
+    // - /admin/session_modal_form
+    // - /admin/save_session
+    // --------------------------------------------------------------------
+    function sessions_list_data() {
+        // --- EDUNEXA PHASE 1 FIX START ---
+        $sessions_model = model("App\Models\EdxSessionsModel");
+        $result = $sessions_model->get_details()->getResult();
+
+        $rows = array();
+        foreach ($result as $data) {
+            $rows[] = $this->_make_session_row($data);
+        }
+
+        echo json_encode(array("data" => $rows));
+        // --- EDUNEXA PHASE 1 FIX END ---
+    }
+
+    private function _make_session_row($data) {
+        // --- EDUNEXA PHASE 1 FIX START ---
+        $learner_name = trim($data->first_name . " " . $data->last_name);
+
+        $view_btn = modal_anchor(get_uri("admin/view_session/" . $data->id), "<i data-feather=\'eye\' class=\'icon-16\'></i>", array(
+            "title" => "View",
+            "class" => "btn btn-default btn-sm",
+            "data-modal-lg" => "1"
+        ));
+
+        $edit_btn = "";
+        if ($this->login_user->is_admin) {
+            $edit_btn = modal_anchor(get_uri("admin/session_modal_form"), "<i data-feather='edit' class='icon-16'></i>", array(
+                "title" => "Edit session",
+                "class" => "btn btn-default btn-sm",
+                "data-post-id" => $data->id
+            ));
+        }
+
+        return array(
+            $data->id,
+            esc($data->learner_ref),
+            esc($learner_name),
+            esc($data->course_name),
+            $data->start,
+            $data->end,
+            $data->planned_minutes,
+            esc($data->status),
+            $view_btn . " " . $edit_btn
+        );
+            // --- EDUNEXA PHASE 1 FIX END ---
+}
+
+    private function _session_row_data($id) {
+        // --- EDUNEXA PHASE 1 FIX START ---
+        $sessions_model = model("App\Models\EdxSessionsModel");
+        $info = $sessions_model->get_one_details($id)->getRow();
+        if (!$info) {
+            return null;
+        }
+        return $this->_make_session_row($info);
+            // --- EDUNEXA PHASE 1 FIX END ---
+}
+
+    private function _normalize_datetime_value($value) {
+        // --- EDUNEXA PHASE 1 FIX START ---
+        $value = trim($value);
+        if (!$value) {
+            return "";
+        }
+
+        $value = str_replace("T", " ", $value);
+        // add seconds if missing
+        if (strlen($value) === 16) {
+            $value .= ":00";
+        }
+
+        return $value;
+            // --- EDUNEXA PHASE 1 FIX END ---
+}
+
+    function session_modal_form() {
+        // --- EDUNEXA PHASE 1 FIX START ---
+        if (!$this->login_user->is_admin) {
+            show_404();
+        }
+
+        $this->validate_submitted_data(array(
+            "id" => "numeric"
+        ));
+
+        $id = $this->request->getPost("id");
+
+        $sessions_model = model("App\Models\EdxSessionsModel");
+        $learners_model = model("App\Models\EdxLearnersModel");
+
+        $view_data = array();
+        $view_data["session_info"] = $id ? $sessions_model->get_one($id) : null;
+
+        $learners = $learners_model->get_details()->getResult();
+        $learners_dropdown = array("" => "-");
+
+        foreach ($learners as $l) {
+            $learners_dropdown[$l->id] = trim($l->learner_ref . " - " . $l->first_name . " " . $l->last_name);
+        }
+
+        $view_data["learners_dropdown"] = $learners_dropdown;
+
+        return $this->template->view("admin/sessions/modal_form", $view_data);
+        // --- EDUNEXA PHASE 1 FIX END ---
+    }
+
+    function save_session() {
+        // --- EDUNEXA PHASE 1 FIX START ---
+        if (!$this->login_user->is_admin) {
+            echo json_encode(array("success" => false, "message" => "Forbidden"));
+            return;
+        }
+
+        $this->validate_submitted_data(array(
+            "id" => "numeric",
+            "learner_id" => "required|numeric",
+            "start" => "required",
+            "end" => "required"
+        ));
+
+        date_default_timezone_set("Africa/Tunis");
+        $tz = new \DateTimeZone("Africa/Tunis");
+        $now = date("Y-m-d H:i:s");
+
+        $id = $this->request->getPost("id");
+        $learner_id = $this->request->getPost("learner_id");
+        $start_raw = $this->request->getPost("start");
+        $end_raw = $this->request->getPost("end");
+
+        $start_value = $this->_normalize_datetime_value($start_raw);
+        $end_value = $this->_normalize_datetime_value($end_raw);
+
+        try {
+            $start_dt = new \DateTime($start_value, $tz);
+            $end_dt = new \DateTime($end_value, $tz);
+        } catch (\Exception $e) {
+            echo json_encode(array("success" => false, "message" => "Invalid start/end datetime."));
+            return;
+        }
+
+        $diff_seconds = $end_dt->getTimestamp() - $start_dt->getTimestamp();
+        $planned_minutes = intval(floor($diff_seconds / 60));
+
+        if ($planned_minutes <= 0) {
+            echo json_encode(array("success" => false, "message" => "End must be after start."));
+            return;
+        }
+
+        $db = db_connect("default");
+        $learners_table = $db->prefixTable("edx_learners");
+        $learner_row = $db->table($learners_table)->where("id", $learner_id)->where("deleted", 0)->get()->getRow();
+
+        if (!$learner_row) {
+            echo json_encode(array("success" => false, "message" => "Learner not found."));
+            return;
+        }
+
+        $data = array(
+            "learner_id" => $learner_id,
+            "course_id" => $learner_row->course_id,
+            "start" => $start_dt->format("Y-m-d H:i:s"),
+            "end" => $end_dt->format("Y-m-d H:i:s"),
+            "planned_minutes" => $planned_minutes,
+            "status" => "scheduled"
+        );
+
+        if (!$id) {
+            $data["created_by"] = $this->login_user->id;
+            $data["created_at"] = $now;
+        }
+
+        $sessions_model = model("App\Models\EdxSessionsModel");
+        $save_result = $sessions_model->ci_save($data, $id);
+
+        $save_id = $id;
+        if (!$id) {
+            $save_id = $save_result;
+        } else {
+            if (!$save_result) {
+                $save_id = 0;
+            }
+        }
+
+        if (!$save_id) {
+            echo json_encode(array("success" => false, "message" => "Could not save session."));
+            return;
+        }
+
+        echo json_encode(array(
+            "success" => true,
+            "data" => $this->_session_row_data($save_id),
+            "id" => $save_id,
+            "message" => "Session saved."
+        ));
+        // --- EDUNEXA PHASE 1 FIX END ---
+    }
 }

@@ -1,49 +1,39 @@
-# EDUNEXA Phase 1 — Patch 1B (Intake Flow)
+# EDUNEXA Phase 1 — Patch 1C (Sessions & Calendar)
 
 ## Changed files
-- app/Models/EdxCoursesModel.php
-- app/Models/EdxLearnersModel.php
-- app/Models/EdxIntakeRequestsModel.php
-- app/Models/EdxTrainersModel.php
-- app/Controllers/Clients.php
+- app/Models/EdxSessionsModel.php
 - app/Controllers/Admin.php
-- app/Views/clients/coordinator/index.php
-- app/Views/clients/coordinator/learner_modal_form.php
-- app/Views/admin/intake/index.php
-- app/Views/admin/intake/approve_modal_form.php
+- app/Controllers/Events.php
+- app/Views/admin/sessions/index.php
+- app/Views/admin/sessions/modal_form.php
+- app/Views/events/program_session_view.php
 
 ## What this patch does
-- Implements Coordinator intake lifecycle:
-  - Coordinator creates Learner + Intake Request (`pending`) in one action
-  - Enforces **Coordinator isolation** in SQL: learners list filters by `created_by = login_user->id`
-- Implements Learner reference generation:
-  - `learner_ref` is generated server-side as **3-digit string** (`001–999`)
-  - Uses `MAX(learner_ref)+1`, left-padded
-  - Blocks creation if next ref > 999
-  - Retries once on unique constraint collision
-- Implements Admin intake queue:
-  - `/admin/intake` page with list data endpoint
-  - Approve: sets `learner.status=onboarding`, `intake.status=approved`
-    - `planned_minutes_total` is required (>0)
-    - `trainer_id` optional
-  - Reject: **transactional hard delete** in order:
-    - logs → sessions → intake requests → learner
+- Adds `EdxSessionsModel` and session detail querying (joins learner + course)
+- Admin sessions scheduling:
+  - `/admin/sessions` list via `appTable`
+  - `/admin/session_modal_form` modal to create/edit sessions
+  - `/admin/save_session` computes `planned_minutes = (end - start)` in minutes
+- Calendar feed (Program context):
+  - `Events::calendar_events` with `context=program` now returns **sessions only**
+  - Respects FullCalendar `start`/`end` params
+  - Filters by `learner_id` when provided
+  - Enforces Coordinator isolation (`created_by`) when `login_user->user_type === "client"`
+- Event modal (Program context):
+  - `Events::view` with `context=program` loads real session info and log history (read-only)
 
 ## Verification steps
-1. As a **client user (Coordinator)**:
-   - Go to Learners (Coordinator view)
-   - Click **Add learner**
-   - Fill form and submit
-   - You should see the new learner appear in the list
-   - You should see `learner_ref` generated as `001`, `002`, ...
+1. As **admin**:
+   - Go to **Admin → Sessions**
+   - Click **Add session**
+   - Pick a learner, set start/end, save
+   - You should see the session appear with planned minutes populated
 
-2. As an **admin**:
-   - Go to **Admin → Intake requests**
-   - You should see pending intake rows created by coordinators
-   - Click **Approve**, set planned minutes total, optionally select trainer, submit
-   - You should see intake status updated to `approved` and learner status `onboarding`
+2. Calendar feed:
+   - Open Events calendar in **Program** context (where Rise loads `events/calendar_events?context=program`)
+   - You should see sessions rendered (not generic events)
+   - If you filter by learner, you should only see that learner’s sessions
 
-3. Rejection hard delete:
-   - Click **Reject** on a pending intake
-   - You should see the row removed
-   - In DB, you should see learner + all dependent intake/sessions/logs removed
+3. Program session modal:
+   - Click a session on the program calendar
+   - You should see session details + log history section (read-only)
