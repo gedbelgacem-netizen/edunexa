@@ -46,17 +46,50 @@ class Admin extends Security_Controller {
      * HTML fragment for ajaxModal
      */
     function view_session($id = 0) {
-        if (!$id) {
-            $id = $this->request->getPost("id");
-        }
-
         validate_numeric_value($id);
 
+        // --- EDUNEXA PHASE 1 FIX START ---
+        $sessions_model = model("App\Models\EdxSessionsModel");
+        $logs_model = model("App\Models\EdxSessionLogsModel");
+
+        $session_info = $sessions_model->get_one_details($id)->getRow();
+        if (!$session_info) {
+            show_404();
+        }
+
+        $logs = $logs_model->get_details(array("session_id" => $id))->getResult();
+
+        date_default_timezone_set("Africa/Tunis");
+        $tz = new \DateTimeZone("Africa/Tunis");
+        $now_dt = new \DateTime("now", $tz);
+
+        $log_locked = false;
+        $log_lock_deadline = "";
+
+        try {
+            $start_dt = new \DateTime($session_info->start, $tz);
+            $deadline_dt = clone $start_dt;
+            $deadline_dt->modify("+24 hours");
+
+            $log_lock_deadline = $deadline_dt->format("Y-m-d H:i:s");
+
+            if (!$this->login_user->is_admin && $now_dt > $deadline_dt) {
+                $log_locked = true;
+            }
+        } catch (\Exception $e) {
+            $log_locked = false;
+        }
+
         $view_data = array(
-            "id" => $id
+            "session_id" => $id,
+            "session_info" => $session_info,
+            "logs" => $logs,
+            "log_locked" => $log_locked,
+            "log_lock_deadline" => $log_lock_deadline
         );
 
         return $this->template->view("admin/sessions/view", $view_data);
+        // --- EDUNEXA PHASE 1 FIX END ---
     }
 
     /**
@@ -64,10 +97,131 @@ class Admin extends Security_Controller {
      * JSON stub
      */
     function save_log() {
+
+        // --- EDUNEXA PHASE 1 FIX START ---
+        $this->validate_submitted_data(array(
+            "id" => "numeric",
+            "session_id" => "required|numeric",
+            "status" => "required"
+        ));
+
+        $is_admin = $this->login_user->is_admin ? true : false;
+
+        $id = $this->request->getPost("id");
+        $session_id = $this->request->getPost("session_id");
+        $status = $this->request->getPost("status");
+        $note = $this->request->getPost("note");
+        $delivered_minutes = $this->request->getPost("delivered_minutes");
+
+        if (!$is_admin && $id) {
+            echo json_encode(array("success" => false, "message" => "You don't have permission to edit logs."));
+            return;
+        }
+
+        date_default_timezone_set("Africa/Tunis");
+        $tz = new \DateTimeZone("Africa/Tunis");
+        $now_dt = new \DateTime("now", $tz);
+        $now = $now_dt->format("Y-m-d H:i:s");
+
+        $db = db_connect("default");
+        $sessions_table = $db->prefixTable("edx_sessions");
+        $learners_table = $db->prefixTable("edx_learners");
+        $intake_table = $db->prefixTable("edx_intake_requests");
+
+        $session_row = $db->table($sessions_table)->where("id", $session_id)->where("deleted", 0)->get()->getRow();
+        if (!$session_row) {
+            echo json_encode(array("success" => false, "message" => "Session not found."));
+            return;
+        }
+
+        // 24h lock: Trainers (non-admin staff) cannot add logs after session.start + 24h
+        if (!$is_admin) {
+            try {
+                $start_dt = new \DateTime($session_row->start, $tz);
+                $deadline_dt = clone $start_dt;
+                $deadline_dt->modify("+24 hours");
+
+                if ($now_dt > $deadline_dt) {
+                    echo json_encode(array("success" => false, "message" => "Log is locked (more than 24 hours after session start)."));
+                    return;
+                }
+            } catch (\Exception $e) {
+                // if date parsing fails, fail safe for trainer
+                echo json_encode(array("success" => false, "message" => "Log is locked."));
+                return;
+            }
+        }
+
+        if ($delivered_minutes === null || $delivered_minutes === "") {
+            $delivered_minutes = ($status === "held") ? intval($session_row->planned_minutes) : 0;
+        } else {
+            $delivered_minutes = intval($delivered_minutes);
+        }
+
+        $logs_model = model("App\Models\EdxSessionLogsModel");
+
+        $data = array(
+            "session_id" => $session_id,
+            "status" => $status,
+            "note" => $note,
+            "delivered_minutes" => $delivered_minutes
+        );
+
+        if (!$id) {
+            $data["created_by"] = $this->login_user->id;
+            $data["created_at"] = $now;
+        }
+
+        $db->transBegin();
+
+        $save_result = $logs_model->ci_save($data, $id);
+
+        $save_id = $id;
+        if (!$id) {
+            $save_id = $save_result;
+        } else {
+            if (!$save_result) {
+                $save_id = 0;
+            }
+        }
+
+        if (!$save_id) {
+            $db->transRollback();
+            echo json_encode(array("success" => false, "message" => "Could not save log."));
+            return;
+        }
+
+        // Activation trigger: FIRST held log only
+        if ($status === "held") {
+            $learner_id = $session_row->learner_id;
+
+            $learner_row = $db->table($learners_table)->select("id, activated_at")->where("id", $learner_id)->where("deleted", 0)->get()->getRow();
+
+            if ($learner_row && (!$learner_row->activated_at || $learner_row->activated_at === "0000-00-00 00:00:00")) {
+
+                $db->table($learners_table)->where("id", $learner_id)->update(array(
+                    "status" => "active",
+                    "activated_at" => $now
+                ));
+
+                $latest_intake = $db->table($intake_table)->select("id")->where("learner_id", $learner_id)->orderBy("id", "DESC")->get(1)->getRow();
+                if ($latest_intake) {
+                    $db->table($intake_table)->where("id", $latest_intake->id)->update(array(
+                        "status" => "completed",
+                        "completed_at" => $now
+                    ));
+                }
+            }
+        }
+
+        $db->transCommit();
+
         echo json_encode(array(
             "success" => true,
-            "message" => "Stub saved"
+            "id" => $save_id,
+            "message" => "Log saved."
         ));
+        // --- EDUNEXA PHASE 1 FIX END ---
     }
 
 
@@ -493,4 +647,24 @@ class Admin extends Security_Controller {
         ));
         // --- EDUNEXA PHASE 1 FIX END ---
     }
+
+
+    function delete_log($id = 0) {
+        // --- EDUNEXA PHASE 1 FIX START ---
+        if (!$this->login_user->is_admin) {
+            show_404();
+        }
+
+        validate_numeric_value($id);
+
+        $logs_model = model("App\Models\EdxSessionLogsModel");
+
+        if ($logs_model->delete($id)) {
+            echo json_encode(array("success" => true, "message" => "Log deleted."));
+        } else {
+            echo json_encode(array("success" => false, "message" => "Could not delete log."));
+        }
+        // --- EDUNEXA PHASE 1 FIX END ---
+    }
+
 }
